@@ -11,6 +11,7 @@
 //! Implementations of serialization for structures found in libcollections
 
 use std::hash::Hash;
+use std::collections::hash_state::HashState;
 
 use {Decodable, Encodable, Decoder, Encoder};
 use std::collections::{LinkedList, VecDeque, BTreeMap, BTreeSet, HashMap, HashSet};
@@ -126,14 +127,15 @@ impl<
     }
 }
 
-impl<K, V> Encodable for HashMap<K, V>
+impl<K, V, S> Encodable for HashMap<K, V, S>
     where K: Encodable + Hash + Eq,
           V: Encodable,
+          S: HashState,
 {
     fn encode<E: Encoder>(&self, e: &mut E) -> Result<(), E::Error> {
         e.emit_map(self.len(), |e| {
             let mut i = 0;
-            for (key, val) in self.iter() {
+            for (key, val) in self {
                 try!(e.emit_map_elt_key(i, |e| key.encode(e)));
                 try!(e.emit_map_elt_val(i, |e| val.encode(e)));
                 i += 1;
@@ -143,13 +145,15 @@ impl<K, V> Encodable for HashMap<K, V>
     }
 }
 
-impl<K, V> Decodable for HashMap<K, V>
+impl<K, V, S> Decodable for HashMap<K, V, S>
     where K: Decodable + Hash + Eq,
           V: Decodable,
+          S: HashState + Default,
 {
-    fn decode<D: Decoder>(d: &mut D) -> Result<HashMap<K, V>, D::Error> {
+    fn decode<D: Decoder>(d: &mut D) -> Result<HashMap<K, V, S>, D::Error> {
         d.read_map(|d, len| {
-            let mut map = HashMap::with_capacity(len);
+            let state = Default::default();
+            let mut map = HashMap::with_capacity_and_hash_state(len, state);
             for i in 0..len {
                 let key = try!(d.read_map_elt_key(i, |d| Decodable::decode(d)));
                 let val = try!(d.read_map_elt_val(i, |d| Decodable::decode(d)));
@@ -160,11 +164,14 @@ impl<K, V> Decodable for HashMap<K, V>
     }
 }
 
-impl<T> Encodable for HashSet<T> where T: Encodable + Hash + Eq {
+impl<T, S> Encodable for HashSet<T, S>
+    where T: Encodable + Hash + Eq,
+          S: HashState,
+{
     fn encode<E: Encoder>(&self, s: &mut E) -> Result<(), E::Error> {
         s.emit_seq(self.len(), |s| {
             let mut i = 0;
-            for e in self.iter() {
+            for e in self {
                 try!(s.emit_seq_elt(i, |s| e.encode(s)));
                 i += 1;
             }
@@ -173,10 +180,14 @@ impl<T> Encodable for HashSet<T> where T: Encodable + Hash + Eq {
     }
 }
 
-impl<T> Decodable for HashSet<T> where T: Decodable + Hash + Eq, {
-    fn decode<D: Decoder>(d: &mut D) -> Result<HashSet<T>, D::Error> {
+impl<T, S> Decodable for HashSet<T, S>
+    where T: Decodable + Hash + Eq,
+          S: HashState + Default,
+{
+    fn decode<D: Decoder>(d: &mut D) -> Result<HashSet<T, S>, D::Error> {
         d.read_seq(|d, len| {
-            let mut set = HashSet::with_capacity(len);
+            let state = Default::default();
+            let mut set = HashSet::with_capacity_and_hash_state(len, state);
             for i in 0..len {
                 set.insert(try!(d.read_seq_elt(i, |d| Decodable::decode(d))));
             }
